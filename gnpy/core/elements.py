@@ -21,16 +21,17 @@ instance as a result.
 """
 
 from numpy import abs, array, errstate, ones, interp, mean, pi, polyfit, polyval, sum, sqrt, log10, exp, asarray, full,\
-    squeeze, zeros, append, flip, outer
+    squeeze, zeros, append, flip, outer, multiply, concatenate, subtract
 from scipy.constants import h, c
 from scipy.interpolate import interp1d
 from collections import namedtuple
 
-from gnpy.core.utils import lin2db, db2lin, arrange_frequencies, snr_sum
+from gnpy.core.utils import lin2db, db2lin, arrange_frequencies, snr_sum, read_mask_data
 from gnpy.core.parameters import RoadmParams, FusedParams, FiberParams, PumpParams, EdfaParams, EdfaOperational
 from gnpy.core.science_utils import NliSolver, RamanSolver
 from gnpy.core.info import SpectralInformation
 from gnpy.core.exceptions import NetworkTopologyError, SpectrumError
+from gnpy.core.im import interpolationMethod
 
 
 class Location(namedtuple('Location', 'latitude longitude city region')):
@@ -670,6 +671,7 @@ class Edfa(_Node):
         if self.params.type_def == 'power_mask_model':
             print(self.params.power_mask_path)
             #Funçao do Allan
+            self.gprofile = self._im_gain_profile(pin)
         else:
             self.nf = self._calc_nf()
             self.gprofile = self._gain_profile(pin)
@@ -889,6 +891,22 @@ class Edfa(_Node):
             dgts3 = xcent + (-gavg_cent + self.effective_gain) / slope2
 
         return g1st - voa + array(self.interpol_dgt) * dgts3
+
+    def _im_gain_profile(self, pin):
+        g_set = self.effective_gain
+        
+        pin_mW = multiply(pin, 1000)    # W to mW
+        pin_dBm = array(list(map(lambda pin_mW: lin2db(pin_mW), pin_mW)))   # mW to dBm
+
+        im_input = concatenate([[g_set], pin_dBm, self.channel_freq])
+
+        im_query_input = read_mask_data(self.params.power_mask_path)
+
+        n_channels = pin.size
+        pout_dBm = interpolationMethod(im_query_input, [im_input], n_channels)
+
+        g_profile = subtract(pout_dBm[0], pin_dBm[:n_channels])
+        return g_profile
 
     def propagate(self, spectral_info):
         """add ASE noise to the propagating carriers of :class:`.info.SpectralInformation`"""

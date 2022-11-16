@@ -8,9 +8,10 @@ gnpy.core.utils
 This module contains utility functions that are used with gnpy.
 """
 
-from csv import writer
-from numpy import pi, cos, sqrt, log10, linspace, zeros, shape, where, logical_and
+from csv import writer, reader
+from numpy import pi, cos, sqrt, log10, linspace, zeros, shape, where, logical_and, array
 from scipy import constants
+import os
 
 from gnpy.core.exceptions import ConfigurationError
 
@@ -324,3 +325,35 @@ def convert_length(value, units):
         return value * 1e3
     else:
         raise ConfigurationError(f'Cannot convert length in "{units}" into meters')
+
+
+def read_mask_data(folder_path):
+    file_name = 'MASK_'
+    file_extension = '.csv'
+    tilt_values = []
+
+    # Capture tilt values
+    with os.scandir(folder_path) as folder_content:
+        for content in folder_content:
+            if content.is_file() and content.name.endswith(file_extension):
+                tilt_value = re.search(r'' + file_name + '(.+?)' + file_extension, content.name).group(1)
+                tilt_values.append(tilt_value)
+
+    # Read data
+    data = []
+
+    for tilt_value in tilt_values:
+        input_file_dir = os.path.join(folder_path, file_name + str(tilt_value) + file_extension)
+        with open(input_file_dir, 'r') as f_in:
+            rows = reader(f_in, delimiter=';')
+            next(rows)
+
+            for row in rows:
+                aux = [None] * (len(row)+1)
+                for j in range(0, len(row)):
+                    aux[j] = float(row[j]) if row[j] != '' else None
+                aux[-1] = int(tilt_value)
+                data.append(aux)
+
+    data = array(data)
+    return data
